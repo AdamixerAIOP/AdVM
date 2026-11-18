@@ -232,7 +232,7 @@ fun CloudSyncScreen(
                             Text("Need a Quick Walkthrough?", style = MaterialTheme.typography.titleMedium)
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "Learn how to download GSI/ISO files, create Android & Windows VMs, and connect via VNC.",
+                                text = "Learn how to insert OS files, create Android & Windows VMs, and boot inside AdVm.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = TextSecondary
                             )

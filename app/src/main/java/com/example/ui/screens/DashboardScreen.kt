@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -29,12 +30,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Android
 import androidx.compose.material.icons.rounded.BookmarkAdd
-import androidx.compose.material.icons.rounded.CastConnected
 import androidx.compose.material.icons.rounded.Computer
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.DeveloperBoard
 import androidx.compose.material.icons.rounded.Memory
-import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
@@ -44,11 +43,10 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -66,17 +64,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.data.model.FormFactor
 import com.example.data.model.HostHardwareReport
 import com.example.data.model.OsFamily
+import com.example.data.model.OsImageEntry
 import com.example.data.model.UiState
 import com.example.data.model.VmProfile
 import com.example.data.model.VmStatus
-import com.example.service.QemuAvfSpecGenerator
+import com.example.ui.components.HumanCaptchaDialog
 import com.example.ui.components.TelemetryPill
 import com.example.ui.components.WorkstationCard
 import com.example.ui.theme.AmberWarn
@@ -93,6 +91,7 @@ import com.example.ui.theme.WindowsCobalt
 @Composable
 fun DashboardScreen(
     vmsState: UiState<List<VmProfile>>,
+    availableImages: List<OsImageEntry>,
     hostReport: HostHardwareReport,
     selectedFilter: FormFactor?,
     selectedVmId: String?,
@@ -103,11 +102,11 @@ fun DashboardScreen(
     onFilterChange: (FormFactor?) -> Unit,
     onSelectVm: (String?) -> Unit,
     onSaveVm: (VmProfile, () -> Unit) -> Unit,
-    onTogglePower: (VmProfile) -> Unit,
+    onImportLocalFile: (Uri, OsFamily, String, Int, (OsImageEntry) -> Unit) -> Unit = { _, _, _, _, _ -> },
     onStopVm: (VmProfile) -> Unit,
     onDeleteVm: (VmProfile) -> Unit,
     onCreateSnapshot: (VmProfile, String) -> Unit,
-    onLaunchConsole: (VmProfile) -> Unit,
+    onBootVm: (VmProfile) -> Unit,
     onClearBanner: () -> Unit
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
@@ -116,6 +115,15 @@ fun DashboardScreen(
     var snapshotTargetVm by remember { mutableStateOf<VmProfile?>(null) }
     var snapshotLabel by remember { mutableStateOf("Clean Checkpoint") }
     var deleteConfirmVm by remember { mutableStateOf<VmProfile?>(null) }
+    var captchaTargetVm by remember { mutableStateOf<VmProfile?>(null) }
+
+    fun handleBootAction(vm: VmProfile) {
+        if (vm.imageTitle.isNotBlank() && vm.parsedStatus != VmStatus.RUNNING) {
+            captchaTargetVm = vm
+        } else {
+            onBootVm(vm)
+        }
+    }
 
     LaunchedEffect(statusBanner) {
         if (!statusBanner.isNullOrBlank()) {
@@ -128,17 +136,17 @@ fun DashboardScreen(
         containerColor = ObsidianCanvas,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
-            FloatingActionButton(
+            ExtendedFloatingActionButton(
                 onClick = {
                     editorTargetVm = null
                     showEditor = true
                 },
                 containerColor = TelemetryCyan,
                 contentColor = ObsidianCanvas,
+                icon = { Icon(Icons.Rounded.Add, contentDescription = null) },
+                text = { Text("Add VM") },
                 modifier = Modifier.testTag("create_vm_fab")
-            ) {
-                Icon(Icons.Rounded.Add, contentDescription = "Create new virtual machine")
-            }
+            )
         }
     ) { innerPadding ->
         val vmList = (vmsState as? UiState.Success)?.data.orEmpty()
@@ -161,14 +169,11 @@ fun DashboardScreen(
                     modifier = Modifier
                         .weight(1.1f)
                         .fillMaxHeight(),
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
-                    contentPadding = PaddingValues(bottom = 84.dp)
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(bottom = 88.dp)
                 ) {
                     item {
-                        HostTelemetryCard(
-                            report = hostReport,
-                            onRefresh = onRefreshProbe
-                        )
+                        CompactHostReadinessCard(report = hostReport, onRefresh = onRefreshProbe)
                     }
                     item {
                         FormFactorFilterBar(
@@ -192,12 +197,11 @@ fun DashboardScreen(
                                 }
                             } else {
                                 items(filteredVms, key = { it.id }) { vm ->
-                                    VmEnvironmentCard(
+                                    SimpleVmCard(
                                         vm = vm,
                                         isSelected = vm.id == activeInspectorVm?.id,
                                         onClick = { onSelectVm(vm.id) },
-                                        onLaunchConsole = { onLaunchConsole(vm) },
-                                        onTogglePower = { onTogglePower(vm) },
+                                        onBoot = { handleBootAction(vm) },
                                         onStop = { onStopVm(vm) },
                                         onEdit = {
                                             editorTargetVm = vm
@@ -215,7 +219,6 @@ fun DashboardScreen(
                     }
                 }
 
-                // Detail Inspector Pane on Tablets / Foldables
                 Box(
                     modifier = Modifier
                         .weight(0.9f)
@@ -225,7 +228,7 @@ fun DashboardScreen(
                         VmInspectorPane(
                             vm = activeInspectorVm,
                             hostReport = hostReport,
-                            onLaunchConsole = { onLaunchConsole(activeInspectorVm) },
+                            onBoot = { handleBootAction(activeInspectorVm) },
                             onEdit = {
                                 editorTargetVm = activeInspectorVm
                                 showEditor = true
@@ -237,10 +240,10 @@ fun DashboardScreen(
                         )
                     } else {
                         WorkstationCard(modifier = Modifier.fillMaxWidth()) {
-                            Text("VM Hardware Inspector", style = MaterialTheme.typography.titleLarge)
+                            Text("VM Overview", style = MaterialTheme.typography.titleLarge)
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                "Select or create an Android (4–17) or Windows (7–11) environment to inspect its VirtIO GPU, memory allocation, and AVF/QEMU launch spec.",
+                                "Pick or create any Android (4–17) or Windows (7–11) VM, insert your OS file, and boot directly inside AdVm.",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = TextSecondary
                             )
@@ -254,14 +257,11 @@ fun DashboardScreen(
                     .fillMaxSize()
                     .padding(innerPadding)
                     .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-                contentPadding = PaddingValues(top = 12.dp, bottom = 92.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(top = 12.dp, bottom = 96.dp)
             ) {
                 item {
-                    HostTelemetryCard(
-                        report = hostReport,
-                        onRefresh = onRefreshProbe
-                    )
+                    CompactHostReadinessCard(report = hostReport, onRefresh = onRefreshProbe)
                 }
                 item {
                     FormFactorFilterBar(
@@ -285,14 +285,13 @@ fun DashboardScreen(
                             }
                         } else {
                             items(filteredVms, key = { it.id }) { vm ->
-                                VmEnvironmentCard(
+                                SimpleVmCard(
                                     vm = vm,
                                     isSelected = vm.id == selectedVmId,
                                     onClick = {
                                         onSelectVm(if (selectedVmId == vm.id) null else vm.id)
                                     },
-                                    onLaunchConsole = { onLaunchConsole(vm) },
-                                    onTogglePower = { onTogglePower(vm) },
+                                    onBoot = { handleBootAction(vm) },
                                     onStop = { onStopVm(vm) },
                                     onEdit = {
                                         editorTargetVm = vm
@@ -315,8 +314,10 @@ fun DashboardScreen(
     if (showEditor) {
         VmEditorSheet(
             initialVm = editorTargetVm,
+            availableImages = availableImages,
             hostReport = hostReport,
             isSaving = isMutating,
+            onImportLocalFile = onImportLocalFile,
             onSave = { updated ->
                 onSaveVm(updated) { showEditor = false }
             },
@@ -328,11 +329,11 @@ fun DashboardScreen(
         AlertDialog(
             onDismissRequest = { snapshotTargetVm = null },
             containerColor = SlateElevated,
-            title = { Text("Create Cloud Snapshot") },
+            title = { Text("Save VM Snapshot") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        "Save a cloud-synchronized checkpoint for ${snapshotTargetVm?.name}.",
+                        "Save a checkpoint for ${snapshotTargetVm?.name}.",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary
                     )
@@ -370,7 +371,7 @@ fun DashboardScreen(
             containerColor = SlateElevated,
             title = { Text("Delete Virtual Machine?") },
             text = {
-                Text("Remove \"${deleteConfirmVm?.name}\" from your cloud-synced AdVm workstation? Local GSI image files remain untouched.")
+                Text("Remove \"${deleteConfirmVm?.name}\" from AdVm? Any downloaded GSI/ISO files stay saved in GSI Images.")
             },
             confirmButton = {
                 Button(
@@ -390,24 +391,28 @@ fun DashboardScreen(
             }
         )
     }
+
+    if (captchaTargetVm != null) {
+        val target = captchaTargetVm!!
+        HumanCaptchaDialog(
+            vmName = target.name,
+            onVerified = {
+                captchaTargetVm = null
+                onBootVm(target)
+            },
+            onDismiss = { captchaTargetVm = null }
+        )
+    }
 }
 
 @Composable
-private fun HostTelemetryCard(
+private fun CompactHostReadinessCard(
     report: HostHardwareReport,
     onRefresh: () -> Unit
 ) {
-    val usedRamRatio = ((report.totalRamMb - report.availableRamMb).toFloat() / report.totalRamMb.toFloat())
-        .coerceIn(0f, 1f)
-    val avfColor = when {
-        report.avfServiceAvailable && report.kvmAccessible -> AndroidEmerald
-        report.avfFeaturePresent || report.avfServiceAvailable -> TelemetryCyan
-        else -> AmberWarn
-    }
-
     WorkstationCard(
         modifier = Modifier.fillMaxWidth(),
-        borderColor = avfColor.copy(alpha = 0.4f)
+        borderColor = TelemetryCyan.copy(alpha = 0.3f)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -416,12 +421,12 @@ private fun HostTelemetryCard(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = report.deviceModel,
+                    text = "AdVm Hypervisor Workstation",
                     style = MaterialTheme.typography.titleMedium
                 )
                 Text(
-                    text = "API ${report.androidApiLevel} (${report.androidRelease}) • ${report.supportedAbis.firstOrNull() ?: "arm64"}",
-                    style = MaterialTheme.typography.labelSmall,
+                    text = "${report.deviceModel} • ${report.availableRamMb} MB free RAM • ${report.cpuCoreCount} Cores",
+                    style = MaterialTheme.typography.bodySmall,
                     color = TextSecondary
                 )
             }
@@ -429,58 +434,15 @@ private fun HostTelemetryCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                TelemetryPill(label = report.avfStatusLabel, accent = avfColor, leadingDot = true)
+                TelemetryPill(label = report.avfStatusLabel, accent = if (report.kvmAccessible) AndroidEmerald else TelemetryCyan, leadingDot = true)
                 IconButton(
                     onClick = onRefresh,
-                    modifier = Modifier.testTag("refresh_hardware_probe_button")
+                    modifier = Modifier.size(48.dp).testTag("refresh_hardware_probe_button")
                 ) {
-                    Icon(Icons.Rounded.Refresh, contentDescription = "Refresh hardware probe", tint = TelemetryCyan)
+                    Icon(Icons.Rounded.Refresh, contentDescription = "Refresh device info", tint = TelemetryCyan)
                 }
             }
         }
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            TelemetryPill(label = "${report.cpuCoreCount} Cores", accent = TelemetryCyan)
-            TelemetryPill(label = report.vulkanVersionLabel, accent = AndroidEmerald)
-            TelemetryPill(
-                label = if (report.kvmAccessible) "/dev/kvm RW" else if (report.kvmDevicePresent) "/dev/kvm Locked" else "No /dev/kvm",
-                accent = if (report.kvmAccessible) AndroidEmerald else AmberWarn
-            )
-            TelemetryPill(
-                label = if (report.avfFeaturePresent) "AVF Feature" else "Standard Host",
-                accent = if (report.avfFeaturePresent) TelemetryCyan else TextMuted
-            )
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text("Host Memory Headroom", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-            Text(
-                "${report.availableRamMb} MB free / ${report.totalRamMb} MB",
-                style = MaterialTheme.typography.labelSmall,
-                color = TelemetryCyan
-            )
-        }
-        Spacer(modifier = Modifier.height(6.dp))
-        LinearProgressIndicator(
-            progress = { usedRamRatio },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(6.dp)
-                .clip(RoundedCornerShape(3.dp)),
-            color = TelemetryCyan,
-            trackColor = SlateElevated
-        )
     }
 }
 
@@ -506,14 +468,14 @@ private fun FormFactorFilterBar(
         FilterChip(
             selected = selectedFilter == FormFactor.PHONE,
             onClick = { onSelectFilter(FormFactor.PHONE) },
-            label = { Text("Android Phone Mode") },
+            label = { Text("Android Phone") },
             leadingIcon = { Icon(Icons.Rounded.PhoneAndroid, contentDescription = null, tint = AndroidEmerald) },
             modifier = Modifier.testTag("filter_phone_vms")
         )
         FilterChip(
             selected = selectedFilter == FormFactor.PC,
             onClick = { onSelectFilter(FormFactor.PC) },
-            label = { Text("Windows PC Mode") },
+            label = { Text("Windows PC") },
             leadingIcon = { Icon(Icons.Rounded.Computer, contentDescription = null, tint = WindowsCobalt) },
             modifier = Modifier.testTag("filter_pc_vms")
         )
@@ -521,12 +483,11 @@ private fun FormFactorFilterBar(
 }
 
 @Composable
-private fun VmEnvironmentCard(
+private fun SimpleVmCard(
     vm: VmProfile,
     isSelected: Boolean,
     onClick: () -> Unit,
-    onLaunchConsole: () -> Unit,
-    onTogglePower: () -> Unit,
+    onBoot: () -> Unit,
     onStop: () -> Unit,
     onEdit: () -> Unit,
     onSnapshot: () -> Unit,
@@ -534,6 +495,7 @@ private fun VmEnvironmentCard(
 ) {
     val isWindows = vm.parsedOsFamily == OsFamily.WINDOWS
     val accent = if (isWindows) WindowsCobalt else AndroidEmerald
+    val isRunning = vm.parsedStatus == VmStatus.RUNNING
     val statusColor = when (vm.parsedStatus) {
         VmStatus.RUNNING -> AndroidEmerald
         VmStatus.PAUSED -> AmberWarn
@@ -545,7 +507,7 @@ private fun VmEnvironmentCard(
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .testTag("vm_card_${vm.id}"),
-        borderColor = if (isSelected) TelemetryCyan else HairlineBorder
+        borderColor = if (isRunning) AndroidEmerald.copy(alpha = 0.65f) else if (isSelected) TelemetryCyan else HairlineBorder
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -559,16 +521,17 @@ private fun VmEnvironmentCard(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(44.dp)
-                        .clip(RoundedCornerShape(12.dp))
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(14.dp))
                         .background(accent.copy(alpha = 0.16f))
-                        .border(1.dp, accent.copy(alpha = 0.4f), RoundedCornerShape(12.dp)),
+                        .border(1.dp, accent.copy(alpha = 0.45f), RoundedCornerShape(14.dp)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = if (isWindows) Icons.Rounded.Computer else Icons.Rounded.Android,
                         contentDescription = vm.osFamily,
-                        tint = accent
+                        tint = accent,
+                        modifier = Modifier.size(26.dp)
                     )
                 }
                 Column {
@@ -582,27 +545,18 @@ private fun VmEnvironmentCard(
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary
                     )
+                    Text(
+                        text = "${vm.cpuCores} vCPU • ${vm.ramMb} MB RAM" +
+                            if (vm.imageTitle.isNotBlank()) " • File: ${vm.imageTitle}" else " • Pick OS file to boot",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (vm.imageTitle.isNotBlank()) AndroidEmerald else AmberWarn
+                    )
                 }
             }
             TelemetryPill(label = vm.parsedStatus.label, accent = statusColor, leadingDot = true)
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            TelemetryPill(label = "${vm.cpuCores} vCPU", accent = TelemetryCyan)
-            TelemetryPill(label = "${vm.ramMb} MB RAM", accent = accent)
-            TelemetryPill(label = vm.architecture, accent = TextSecondary)
-            TelemetryPill(label = "${vm.displayWidth}×${vm.displayHeight}", accent = TextSecondary)
-            if (vm.tpmEnabled) TelemetryPill(label = "vTPM 2.0", accent = WindowsCobalt)
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -610,39 +564,32 @@ private fun VmEnvironmentCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Button(
-                onClick = onLaunchConsole,
+                onClick = onBoot,
                 modifier = Modifier
                     .weight(1f)
                     .heightIn(min = 48.dp)
                     .testTag("launch_console_${vm.id}"),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = TelemetryCyan,
+                    containerColor = if (isRunning) AndroidEmerald else TelemetryCyan,
                     contentColor = ObsidianCanvas
                 )
             ) {
-                Icon(Icons.Rounded.CastConnected, contentDescription = null, modifier = Modifier.size(18.dp))
+                Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("Console")
-            }
-
-            OutlinedButton(
-                onClick = onTogglePower,
-                modifier = Modifier
-                    .heightIn(min = 48.dp)
-                    .testTag("power_toggle_${vm.id}"),
-                border = BorderStroke(1.dp, statusColor.copy(alpha = 0.6f))
-            ) {
-                Icon(
-                    imageVector = if (vm.parsedStatus == VmStatus.RUNNING) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                    contentDescription = if (vm.parsedStatus == VmStatus.RUNNING) "Pause VM" else "Start VM",
-                    tint = statusColor
+                Text(
+                    text = when {
+                        isRunning -> "Live Screen"
+                        vm.imageTitle.isBlank() -> "Pick File & Boot"
+                        else -> "Boot OS"
+                    },
+                    fontWeight = FontWeight.SemiBold
                 )
             }
 
-            if (vm.parsedStatus != VmStatus.STOPPED) {
+            if (isRunning) {
                 IconButton(
                     onClick = onStop,
-                    modifier = Modifier.size(48.dp)
+                    modifier = Modifier.size(48.dp).testTag("stop_vm_${vm.id}")
                 ) {
                     Icon(Icons.Rounded.Stop, contentDescription = "Power off VM", tint = RoseAlert)
                 }
@@ -654,50 +601,34 @@ private fun VmEnvironmentCard(
                     .size(48.dp)
                     .testTag("edit_vm_${vm.id}")
             ) {
-                Icon(Icons.Rounded.Settings, contentDescription = "Configure VM", tint = TextSecondary)
+                Icon(Icons.Rounded.Settings, contentDescription = "Edit VM", tint = TextSecondary)
             }
         }
 
         AnimatedVisibility(visible = isSelected) {
-            Column(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text(
-                    text = "VNC Bridge: ${vm.vncHost}:${vm.vncPort} • GPU: ${vm.parsedGpu.label}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = TextSecondary
-                )
-                Text(
-                    text = "Image: ${vm.imageTitle.ifBlank { "No disk attached yet (attach in GSI Images)" }}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = TextMuted
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                OutlinedButton(
+                    onClick = onSnapshot,
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 48.dp),
+                    border = BorderStroke(1.dp, HairlineBorder)
                 ) {
-                    OutlinedButton(
-                        onClick = onSnapshot,
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = 48.dp),
-                        border = BorderStroke(1.dp, HairlineBorder)
-                    ) {
-                        Icon(Icons.Rounded.BookmarkAdd, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Snapshot")
-                    }
-                    OutlinedButton(
-                        onClick = onDelete,
-                        modifier = Modifier
-                            .heightIn(min = 48.dp),
-                        border = BorderStroke(1.dp, RoseAlert.copy(alpha = 0.5f))
-                    ) {
-                        Icon(Icons.Rounded.DeleteOutline, contentDescription = "Delete VM", tint = RoseAlert)
-                    }
+                    Icon(Icons.Rounded.BookmarkAdd, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Snapshot")
+                }
+                OutlinedButton(
+                    onClick = onDelete,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                    border = BorderStroke(1.dp, RoseAlert.copy(alpha = 0.5f))
+                ) {
+                    Icon(Icons.Rounded.DeleteOutline, contentDescription = "Delete VM", tint = RoseAlert)
                 }
             }
         }
@@ -708,13 +639,10 @@ private fun VmEnvironmentCard(
 private fun VmInspectorPane(
     vm: VmProfile,
     hostReport: HostHardwareReport,
-    onLaunchConsole: () -> Unit,
+    onBoot: () -> Unit,
     onEdit: () -> Unit,
     onSnapshot: () -> Unit
 ) {
-    val launchSpec = remember(vm, hostReport) {
-        QemuAvfSpecGenerator.buildLaunchSpec(vm, hostReport)
-    }
     WorkstationCard(
         modifier = Modifier
             .fillMaxSize()
@@ -731,42 +659,50 @@ private fun VmInspectorPane(
         }
         Spacer(modifier = Modifier.height(6.dp))
         Text(
-            text = "Last synced from ${vm.lastSyncedDevice}",
+            text = "${vm.parsedFormFactor.label} • ${vm.cpuCores} vCPU • ${vm.ramMb} MB RAM",
             style = MaterialTheme.typography.bodySmall,
             color = TextSecondary
         )
         Spacer(modifier = Modifier.height(14.dp))
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TelemetryPill(label = vm.parsedGpu.label, accent = AndroidEmerald)
-            TelemetryPill(label = if (vm.uefiEnabled) "UEFI" else "BIOS", accent = WindowsCobalt)
-        }
-
-        Spacer(modifier = Modifier.height(14.dp))
-        Text("AVF / QEMU Launch Specification", style = MaterialTheme.typography.titleSmall)
+        Text("Hardware & OS File", style = MaterialTheme.typography.titleSmall)
         Spacer(modifier = Modifier.height(6.dp))
-        Text(
-            text = launchSpec,
-            style = MaterialTheme.typography.labelSmall,
-            color = AndroidEmerald,
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(MaterialTheme.shapes.small)
                 .background(ObsidianCanvas)
                 .border(1.dp, HairlineBorder, MaterialTheme.shapes.small)
-                .padding(12.dp)
-        )
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text("OS File: ${vm.imageTitle.ifBlank { "Not selected yet" }}", style = MaterialTheme.typography.bodySmall, color = if (vm.imageTitle.isNotBlank()) AndroidEmerald else AmberWarn)
+            Text("Architecture: ${vm.parsedArch.label}", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+            Text("Graphics: ${vm.parsedGpu.label}", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+            Text("Disk Size: ${vm.storageGb} GB", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+            Text(
+                "Firmware: ${if (vm.uefiEnabled) "UEFI" else "Legacy BIOS"}${if (vm.tpmEnabled) " + vTPM 2.0" else ""}",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary
+            )
+        }
 
         Spacer(modifier = Modifier.height(16.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Button(
-                onClick = onLaunchConsole,
+                onClick = onBoot,
                 modifier = Modifier
                     .weight(1f)
                     .heightIn(min = 48.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = TelemetryCyan, contentColor = ObsidianCanvas)
             ) {
-                Text("Open VNC Console")
+                Text(
+                    when {
+                        vm.parsedStatus == VmStatus.RUNNING -> "Live Screen"
+                        vm.imageTitle.isBlank() -> "Pick File & Boot"
+                        else -> "Boot OS"
+                    }
+                )
             }
             OutlinedButton(
                 onClick = onEdit,
@@ -792,7 +728,7 @@ private fun LoadingVmCard() {
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             CircularProgressIndicator(modifier = Modifier.size(22.dp), color = TelemetryCyan, strokeWidth = 2.dp)
-            Text("Synchronizing VM environments from cloud...", style = MaterialTheme.typography.bodyMedium)
+            Text("Loading virtual machines...", style = MaterialTheme.typography.bodyMedium)
         }
     }
 }
@@ -800,7 +736,7 @@ private fun LoadingVmCard() {
 @Composable
 private fun ErrorVmCard(message: String) {
     WorkstationCard(modifier = Modifier.fillMaxWidth(), borderColor = RoseAlert) {
-        Text("Cloud Sync Error", style = MaterialTheme.typography.titleMedium, color = RoseAlert)
+        Text("Error Loading VMs", style = MaterialTheme.typography.titleMedium, color = RoseAlert)
         Spacer(modifier = Modifier.height(4.dp))
         Text(message, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
     }
@@ -811,10 +747,10 @@ private fun EmptyVmStateCard(onCreateNew: () -> Unit) {
     WorkstationCard(modifier = Modifier.fillMaxWidth()) {
         Icon(Icons.Rounded.DeveloperBoard, contentDescription = null, tint = TelemetryCyan, modifier = Modifier.size(32.dp))
         Spacer(modifier = Modifier.height(8.dp))
-        Text("No VMs Match This Mode", style = MaterialTheme.typography.titleMedium)
+        Text("No VMs Yet", style = MaterialTheme.typography.titleMedium)
         Spacer(modifier = Modifier.height(4.dp))
         Text(
-            "Provision an Android (4–17) Phone or Windows (7–11) PC environment with custom CPU, RAM, and VirtIO GPU allocation.",
+            text = "Tap Add VM to pick an Android (4–17) or Windows (7–11) preset, or tap Add a custom VM.",
             style = MaterialTheme.typography.bodySmall,
             color = TextSecondary
         )
@@ -826,7 +762,7 @@ private fun EmptyVmStateCard(onCreateNew: () -> Unit) {
         ) {
             Icon(Icons.Rounded.Memory, contentDescription = null)
             Spacer(modifier = Modifier.width(8.dp))
-            Text("Provision New VM")
+            Text("Create Your First VM")
         }
     }
 }

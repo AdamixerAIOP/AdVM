@@ -142,6 +142,13 @@ class DashboardViewModel(
         }
     }
 
+    fun startVm(vm: VmProfile) {
+        if (vm.parsedStatus == VmStatus.RUNNING) return
+        viewModelScope.launch {
+            repository.updateVmStatus(currentUserId, vm.id, VmStatus.RUNNING)
+        }
+    }
+
     fun toggleVmPower(vm: VmProfile) {
         val nextStatus = when (vm.parsedStatus) {
             VmStatus.STOPPED, VmStatus.PAUSED -> VmStatus.RUNNING

@@ -145,11 +145,29 @@ class GsiDownloadManager(context: Context) {
             }
         }
 
+        val resolvedPath = resolveSafFilesystemPath(uri) ?: uri.toString()
         return ImportedDocumentInfo(
             displayName = displayName,
             sizeBytes = sizeBytes,
-            uriString = uri.toString()
+            uriString = resolvedPath
         )
+    }
+
+    fun resolveSafFilesystemPath(uri: Uri): String? {
+        val authority = uri.authority ?: return null
+        val segments = uri.pathSegments
+        if (authority == "com.android.externalstorage.documents" && segments.size >= 2) {
+            val docId = segments.last()
+            if (docId.startsWith("primary:", ignoreCase = true)) {
+                val relative = docId.substringAfter(":")
+                return "/sdcard/$relative"
+            }
+        }
+        val last = uri.lastPathSegment.orEmpty()
+        if (last.startsWith("raw:/")) {
+            return last.removePrefix("raw:")
+        }
+        return null
     }
 
     fun deleteLocalFile(path: String) {

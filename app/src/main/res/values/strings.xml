@@ -14,7 +14,6 @@
     <string name="auth_guest_subtitle">Cloud synchronization will be deactivated</string>
     <string name="error_invalid_vm_name">VM name must be between 1 and 60 characters.</string>
     <string name="error_invalid_https_url">Enter a valid https:// URL to download an image.</string>
-    <string name="error_invalid_vnc_port">VNC port must be between 1 and 65535.</string>
     <string name="action_sign_out">Sign Out</string>
     <string name="action_open_tutorial">Open App Tutorial</string>
     <string name="auth_tutorial_button">Quick-Start App Tutorial</string>

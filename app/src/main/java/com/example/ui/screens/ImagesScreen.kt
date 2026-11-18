@@ -389,6 +389,7 @@ fun ImagesScreen(
         VmEditorSheet(
             initialVm = null,
             prefilledImage = vmPrefillImage,
+            availableImages = (imagesState as? UiState.Success)?.data.orEmpty(),
             hostReport = hostReport,
             isSaving = isMutatingVm,
             onSave = { vm ->

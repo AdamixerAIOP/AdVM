@@ -320,7 +320,7 @@ data class HostHardwareReport(
             avfServiceAvailable && kvmAccessible -> "AVF + KVM Direct"
             avfFeaturePresent || avfServiceAvailable -> "AVF Ready (Restricted Privilege)"
             kvmAccessible -> "KVM Node Accessible"
-            else -> "VNC Bridge Mode"
+            else -> "Standard Emulation"
         }
 
     val safeMaxVmRamMb: Int

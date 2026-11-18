@@ -164,7 +164,8 @@ class ImagesViewModel(
         uri: Uri,
         osFamily: OsFamily,
         osVersionLabel: String,
-        osMajorVersion: Int
+        osMajorVersion: Int,
+        onImported: (OsImageEntry) -> Unit = {}
     ) {
         viewModelScope.launch {
             val info = downloadManager.inspectLocalDocument(uri)
@@ -194,7 +195,10 @@ class ImagesViewModel(
                 downloadStatus = ImageDownloadStatus.LOCAL_IMPORT.name
             )
             repository.saveImageEntry(currentUserId, entry)
-                .onSuccess { _statusBanner.value = "Imported \"${info.displayName}\" via Storage Access Framework." }
+                .onSuccess { savedId ->
+                    _statusBanner.value = "Imported \"${info.displayName}\" via Storage Access Framework."
+                    onImported(entry.copy(id = savedId))
+                }
                 .onFailure { _statusBanner.value = it.localizedMessage ?: "Failed to save imported image." }
         }
     }

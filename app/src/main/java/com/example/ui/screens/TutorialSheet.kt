@@ -117,15 +117,15 @@ object AdVmTutorialCatalog {
         ),
         TutorialStepSpec(
             id = "create_vm",
-            badge = "STEP 3 • VM SETUP",
-            title = "Create & Tune Your VM",
-            summary = "Tap the + button on the VMs tab to customize CPU, RAM, GPU acceleration, and display mode.",
+            badge = "STEP 3 • PICK AN OS FILE",
+            title = "Insert an OS File & Tap Boot",
+            summary = "No external apps or terminals needed—pick an OS preset or Add a custom VM, attach a file, and boot.",
             checklist = listOf(
-                "Choose Android (4 to 17) for Phone Mode or Windows (7 to 11) for PC Mode.",
-                "Adjust vCPU cores, memory (MB), and storage (GB) based on your device's free RAM.",
-                "Keep VirtIO Vulkan GPU enabled for smooth graphics, and enable UEFI + vTPM 2.0 for Windows 11."
+                "Tap + Add VM and pick any Android (4–17) or Windows (7–11) preset, or tap Add a custom VM below.",
+                "Download or insert an .img, .iso, or .qcow2 OS file directly inside AdVm.",
+                "Tap Boot OS and complete the quick Human Verification CAPTCHA pop-up."
             ),
-            proTip = "Tap any VM card to expand it and inspect the generated AVF / QEMU launch command and VNC port.",
+            proTip = "Inside Add a custom VM you can choose any local OS file and tune vCPU, RAM, and disk size.",
             accent = WindowsCobalt,
             icon = Icons.Rounded.Tune,
             targetRoute = "dashboard",
@@ -133,15 +133,15 @@ object AdVmTutorialCatalog {
         ),
         TutorialStepSpec(
             id = "console",
-            badge = "STEP 4 • CONSOLE",
-            title = "Boot & Control via VNC",
-            summary = "AdVm connects to your local AVF/QEMU VNC endpoint (127.0.0.1:5900+) with full touch and keyboard controls.",
+            badge = "STEP 4 • LIVE DISPLAY",
+            title = "Verify & Use Your VM",
+            summary = "After passing the CAPTCHA check, AdVm launches the hypervisor engine on your OS file and streams the screen.",
             checklist = listOf(
-                "Tap a VM card to inspect its AVF/QEMU launch spec and confirm its VNC port (e.g. 5900 or 5901).",
-                "Start your local hypervisor/QEMU backend on that VNC port, then tap Console on the VM card.",
-                "Use the touch canvas as a mouse/trackpad, open the Keyboard overlay, or tap quick keys like Ctrl+Alt+Del, Win, or Home."
+                "Touch, drag, right-click, and type directly inside the running guest VM display.",
+                "Use the bottom bar anytime to Pause, Resume, Reset, save a live Snapshot, or Power Off.",
+                "Everything runs directly inside AdVm with zero external apps or terminal commands."
             ),
-            proTip = "You can adjust host and port right inside the VNC Console screen if your runtime listens on another local port.",
+            proTip = "Standalone on-device execution requires NDK-compiled QEMU libraries packaged in the APK build.",
             accent = TelemetryCyan,
             icon = Icons.Rounded.CastConnected
         ),

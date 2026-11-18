@@ -75,6 +75,7 @@ import com.example.data.WorkstationRepository
 import com.example.data.firestore.AdVmRepository
 import com.example.data.model.UiState
 import com.example.data.model.VmProfile
+import com.example.service.EmbeddedQemuEngine
 import com.example.service.GsiDownloadManager
 import com.example.service.HostCapabilityProbe
 import com.example.ui.components.TelemetryPill
@@ -240,6 +241,7 @@ private fun MainWorkstationShell(
     val imagesBanner by imagesViewModel.statusBanner.collectAsStateWithLifecycle()
 
     var activeConsoleVm by remember { mutableStateOf<VmProfile?>(null) }
+    var autoBootVerified by remember { mutableStateOf(false) }
     val tutorialPrefs = remember(context) { TutorialPreferences(context.applicationContext) }
     var showTutorial by rememberSaveable { mutableStateOf(false) }
 
@@ -388,8 +390,10 @@ private fun MainWorkstationShell(
                         .padding(innerPadding)
                 ) {
                     composable(ROUTE_DASHBOARD) {
+                        val availableImages = (imagesState as? UiState.Success)?.data.orEmpty()
                         DashboardScreen(
                             vmsState = vmsState,
+                            availableImages = availableImages,
                             hostReport = hostReport,
                             selectedFilter = selectedFilter,
                             selectedVmId = selectedVmId,
@@ -400,12 +404,16 @@ private fun MainWorkstationShell(
                             onFilterChange = { dashboardViewModel.setFormFactorFilter(it) },
                             onSelectVm = { dashboardViewModel.selectVm(it) },
                             onSaveVm = { vm, done -> dashboardViewModel.saveVm(vm, done) },
-                            onTogglePower = { dashboardViewModel.toggleVmPower(it) },
+                            onImportLocalFile = { uri, fam, ver, maj, onImported ->
+                                imagesViewModel.importLocalDocument(uri, fam, ver, maj, onImported)
+                            },
                             onStopVm = { dashboardViewModel.stopVm(it) },
                             onDeleteVm = { dashboardViewModel.deleteVm(it) },
                             onCreateSnapshot = { vm, label -> dashboardViewModel.createSnapshot(vm, label) },
-                            onLaunchConsole = { vm ->
+                            onBootVm = { vm ->
+                                dashboardViewModel.startVm(vm)
                                 activeConsoleVm = vm
+                                autoBootVerified = vm.imageTitle.isNotBlank()
                                 navController.navigate(ROUTE_CONSOLE)
                             },
                             onClearBanner = { dashboardViewModel.clearBanner() }
@@ -459,13 +467,51 @@ private fun MainWorkstationShell(
 
                     composable(ROUTE_CONSOLE) {
                         val vmList = (vmsState as? UiState.Success)?.data.orEmpty()
-                        val targetVm = activeConsoleVm ?: vmList.firstOrNull()
+                        val mountedImages = (imagesState as? UiState.Success)?.data.orEmpty()
+                        val targetVm = activeConsoleVm?.let { active ->
+                            vmList.firstOrNull { it.id == active.id } ?: active
+                        } ?: vmList.firstOrNull()
                         if (targetVm != null) {
                             VncConsoleScreen(
                                 vm = targetVm,
+                                images = mountedImages,
                                 hostReport = hostReport,
                                 consoleViewModel = consoleViewModel,
-                                onBack = { navController.popBackStack() }
+                                autoBootVerified = autoBootVerified,
+                                onConsumeAutoBoot = { autoBootVerified = false },
+                                onAttachImage = { img ->
+                                    val updated = targetVm.copy(imageId = img.id, imageTitle = img.title)
+                                    activeConsoleVm = updated
+                                    dashboardViewModel.saveVm(updated)
+                                },
+                                onImportLocalFile = { uri ->
+                                    imagesViewModel.importLocalDocument(
+                                        uri = uri,
+                                        osFamily = targetVm.parsedOsFamily,
+                                        osVersionLabel = targetVm.osVersionLabel,
+                                        osMajorVersion = targetVm.osMajorVersion
+                                    ) { imported ->
+                                        val updated = targetVm.copy(imageId = imported.id, imageTitle = imported.title)
+                                        activeConsoleVm = updated
+                                        dashboardViewModel.saveVm(updated)
+                                    }
+                                },
+                                onBrowseImages = {
+                                    navController.navigate(ROUTE_IMAGES) {
+                                        popUpTo(navController.graph.findStartDestination().id) {
+                                            saveState = true
+                                        }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
+                                },
+                                onCreateSnapshot = { vm, label -> dashboardViewModel.createSnapshot(vm, label) },
+                                onPowerOff = {
+                                    EmbeddedQemuEngine.stopActiveProcess()
+                                    dashboardViewModel.stopVm(targetVm)
+                                    navController.popBackStack()
+                                },
+                                onMinimize = { navController.popBackStack() }
                             )
                         }
                     }
