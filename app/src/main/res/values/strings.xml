@@ -1,0 +1,21 @@
+<resources>
+    <string name="app_name">AdVm</string>
+    <string name="tagline_workstation">Hypervisor &amp; GSI Workstation</string>
+    <string name="nav_dashboard">VMs</string>
+    <string name="nav_images">GSI Images</string>
+    <string name="nav_sync">Cloud Sync</string>
+    <string name="auth_title">Sign in to AdVm Cloud</string>
+    <string name="auth_subtitle">Synchronize your Android 4–17 and Windows 7–11 virtual machines, snapshots, and GSI manifests across devices.</string>
+    <string name="auth_google_button">Continue with Google</string>
+    <string name="auth_apple_button">Continue with Apple</string>
+    <string name="auth_microsoft_button">Continue with Microsoft</string>
+    <string name="auth_oauth_guide_button">Apple &amp; Microsoft OAuth Setup Guide</string>
+    <string name="auth_guest_button">Continue as a guest</string>
+    <string name="auth_guest_subtitle">Cloud synchronization will be deactivated</string>
+    <string name="error_invalid_vm_name">VM name must be between 1 and 60 characters.</string>
+    <string name="error_invalid_https_url">Enter a valid https:// URL to download an image.</string>
+    <string name="error_invalid_vnc_port">VNC port must be between 1 and 65535.</string>
+    <string name="action_sign_out">Sign Out</string>
+    <string name="action_open_tutorial">Open App Tutorial</string>
+    <string name="auth_tutorial_button">Quick-Start App Tutorial</string>
+</resources>

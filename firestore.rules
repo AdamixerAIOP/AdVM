@@ -1,0 +1,228 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global safety net: deny everything by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidUserSyncProfile(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80 &&
+             data.email is string && data.email.size() <= 120 &&
+             data.providerId in ['google.com', 'apple.com', 'microsoft.com', 'firebase'] &&
+             data.lastDeviceModel is string && data.lastDeviceModel.size() >= 1 && data.lastDeviceModel.size() <= 100 &&
+             data.preferredFormFactor in ['PHONE', 'PC'] &&
+             data.cloudSyncEnabled is bool &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidVmProfile(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 60 &&
+             data.osFamily in ['ANDROID', 'WINDOWS'] &&
+             data.osVersionLabel is string && data.osVersionLabel.size() >= 1 && data.osVersionLabel.size() <= 40 &&
+             data.osMajorVersion is int && data.osMajorVersion >= 4 && data.osMajorVersion <= 17 &&
+             data.formFactor in ['PHONE', 'PC'] &&
+             data.architecture in ['ARM64', 'X86_64'] &&
+             data.cpuCores is int && data.cpuCores >= 1 && data.cpuCores <= 16 &&
+             data.ramMb is int && data.ramMb >= 512 && data.ramMb <= 32768 &&
+             data.storageGb is int && data.storageGb >= 8 && data.storageGb <= 512 &&
+             data.gpuAcceleration in ['VIRTIO_VULKAN', 'VIRGL', 'SWIFTSHADER'] &&
+             data.uefiEnabled is bool &&
+             data.tpmEnabled is bool &&
+             data.displayWidth is int && data.displayWidth >= 480 && data.displayWidth <= 3840 &&
+             data.displayHeight is int && data.displayHeight >= 640 && data.displayHeight <= 2400 &&
+             data.displayDpi is int && data.displayDpi >= 96 && data.displayDpi <= 640 &&
+             data.imageId is string && data.imageId.size() <= 128 &&
+             data.imageTitle is string && data.imageTitle.size() <= 120 &&
+             data.vncHost is string && data.vncHost.size() >= 1 && data.vncHost.size() <= 120 &&
+             data.vncPort is int && data.vncPort >= 1 && data.vncPort <= 65535 &&
+             data.status in ['STOPPED', 'RUNNING', 'PAUSED'] &&
+             data.lastSyncedDevice is string && data.lastSyncedDevice.size() >= 1 && data.lastSyncedDevice.size() <= 100 &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidOsImageEntry(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 100 &&
+             data.osFamily in ['ANDROID', 'WINDOWS'] &&
+             data.osVersionLabel is string && data.osVersionLabel.size() >= 1 && data.osVersionLabel.size() <= 40 &&
+             data.osMajorVersion is int && data.osMajorVersion >= 4 && data.osMajorVersion <= 17 &&
+             data.format in ['GSI_IMG', 'QCOW2', 'ISO'] &&
+             data.architecture in ['ARM64', 'X86_64'] &&
+             data.sourceUrl is string && data.sourceUrl.size() <= 500 &&
+             data.localPath is string && data.localPath.size() <= 500 &&
+             data.sizeBytes is int && data.sizeBytes >= 0 &&
+             data.sha256 is string && data.sha256.size() <= 128 &&
+             data.downloadStatus in ['AVAILABLE', 'DOWNLOADING', 'VERIFIED', 'LOCAL_IMPORT', 'FAILED'] &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidVmSnapshot(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             isValidId(data.vmId) &&
+             data.vmName is string && data.vmName.size() >= 1 && data.vmName.size() <= 60 &&
+             data.label is string && data.label.size() >= 1 && data.label.size() <= 80 &&
+             data.osVersionLabel is string && data.osVersionLabel.size() >= 1 && data.osVersionLabel.size() <= 40 &&
+             data.formFactor in ['PHONE', 'PC'] &&
+             data.ramMb is int && data.ramMb >= 512 && data.ramMb <= 32768 &&
+             data.deviceOrigin is string && data.deviceOrigin.size() >= 1 && data.deviceOrigin.size() <= 100 &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    match /users/{userId} {
+      allow get: if isOwner(userId) && isValidId(userId);
+      allow list: if false;
+
+      allow create: if isOwner(userId) &&
+                       isValidId(userId) &&
+                       incoming().keys().hasAll([
+                         'userId', 'displayName', 'email', 'providerId',
+                         'lastDeviceModel', 'preferredFormFactor', 'cloudSyncEnabled',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'userId', 'displayName', 'email', 'providerId',
+                         'lastDeviceModel', 'preferredFormFactor', 'cloudSyncEnabled',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidUserSyncProfile(incoming(), userId);
+
+      allow update: if isOwner(userId) &&
+                       isValidId(userId) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidUserSyncProfile(incoming(), userId) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'displayName', 'email', 'providerId', 'lastDeviceModel',
+                         'preferredFormFactor', 'cloudSyncEnabled', 'updatedAt'
+                       ]);
+
+      allow delete: if isOwner(userId) && isValidId(userId);
+
+      match /vms/{vmId} {
+        allow get: if isOwner(userId) && isValidId(vmId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidId(vmId) &&
+                         incoming().keys().hasAll([
+                           'userId', 'name', 'osFamily', 'osVersionLabel', 'osMajorVersion',
+                           'formFactor', 'architecture', 'cpuCores', 'ramMb', 'storageGb',
+                           'gpuAcceleration', 'uefiEnabled', 'tpmEnabled',
+                           'displayWidth', 'displayHeight', 'displayDpi',
+                           'imageId', 'imageTitle', 'vncHost', 'vncPort',
+                           'status', 'lastSyncedDevice', 'createdAt', 'updatedAt'
+                         ]) &&
+                         incoming().keys().hasOnly([
+                           'userId', 'name', 'osFamily', 'osVersionLabel', 'osMajorVersion',
+                           'formFactor', 'architecture', 'cpuCores', 'ramMb', 'storageGb',
+                           'gpuAcceleration', 'uefiEnabled', 'tpmEnabled',
+                           'displayWidth', 'displayHeight', 'displayDpi',
+                           'imageId', 'imageTitle', 'vncHost', 'vncPort',
+                           'status', 'lastSyncedDevice', 'createdAt', 'updatedAt'
+                         ]) &&
+                         isValidVmProfile(incoming(), userId);
+
+        allow update: if isOwner(userId) &&
+                         isValidId(vmId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         isValidVmProfile(incoming(), userId) &&
+                         (
+                           incoming().diff(existing()).affectedKeys().hasOnly([
+                             'status', 'lastSyncedDevice', 'updatedAt'
+                           ]) ||
+                           incoming().diff(existing()).affectedKeys().hasOnly([
+                             'name', 'osFamily', 'osVersionLabel', 'osMajorVersion',
+                             'formFactor', 'architecture', 'cpuCores', 'ramMb', 'storageGb',
+                             'gpuAcceleration', 'uefiEnabled', 'tpmEnabled',
+                             'displayWidth', 'displayHeight', 'displayDpi',
+                             'imageId', 'imageTitle', 'vncHost', 'vncPort',
+                             'status', 'lastSyncedDevice', 'updatedAt'
+                           ])
+                         );
+
+        allow delete: if isOwner(userId) && isValidId(vmId);
+      }
+
+      match /images/{imageId} {
+        allow get: if isOwner(userId) && isValidId(imageId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidId(imageId) &&
+                         incoming().keys().hasAll([
+                           'userId', 'title', 'osFamily', 'osVersionLabel', 'osMajorVersion',
+                           'format', 'architecture', 'sourceUrl', 'localPath',
+                           'sizeBytes', 'sha256', 'downloadStatus', 'createdAt', 'updatedAt'
+                         ]) &&
+                         incoming().keys().hasOnly([
+                           'userId', 'title', 'osFamily', 'osVersionLabel', 'osMajorVersion',
+                           'format', 'architecture', 'sourceUrl', 'localPath',
+                           'sizeBytes', 'sha256', 'downloadStatus', 'createdAt', 'updatedAt'
+                         ]) &&
+                         isValidOsImageEntry(incoming(), userId);
+
+        allow update: if isOwner(userId) &&
+                         isValidId(imageId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         isValidOsImageEntry(incoming(), userId) &&
+                         incoming().diff(existing()).affectedKeys().hasOnly([
+                           'title', 'localPath', 'sizeBytes', 'sha256', 'downloadStatus', 'updatedAt'
+                         ]);
+
+        allow delete: if isOwner(userId) && isValidId(imageId);
+      }
+
+      match /snapshots/{snapshotId} {
+        allow get: if isOwner(userId) && isValidId(snapshotId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidId(snapshotId) &&
+                         incoming().keys().hasAll([
+                           'userId', 'vmId', 'vmName', 'label', 'osVersionLabel',
+                           'formFactor', 'ramMb', 'deviceOrigin', 'createdAt', 'updatedAt'
+                         ]) &&
+                         incoming().keys().hasOnly([
+                           'userId', 'vmId', 'vmName', 'label', 'osVersionLabel',
+                           'formFactor', 'ramMb', 'deviceOrigin', 'createdAt', 'updatedAt'
+                         ]) &&
+                         isValidVmSnapshot(incoming(), userId);
+
+        allow update: if false;
+
+        allow delete: if isOwner(userId) && isValidId(snapshotId);
+      }
+    }
+  }
+}

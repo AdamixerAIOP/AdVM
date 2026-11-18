@@ -1,0 +1,179 @@
+{
+  "entities": {
+    "UserSyncProfile": {
+      "title": "UserSyncProfile",
+      "description": "Authenticated user cloud sync metadata and preferred VM workstation posture.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Firebase Auth UID owning this profile." },
+        "displayName": { "type": "string", "description": "User display name." },
+        "email": { "type": "string", "description": "Account email address if provided." },
+        "providerId": {
+          "type": "string",
+          "enum": ["google.com", "apple.com", "microsoft.com", "firebase"],
+          "description": "Primary federated identity provider."
+        },
+        "lastDeviceModel": { "type": "string", "description": "Most recent device model syncing state." },
+        "preferredFormFactor": { "type": "string", "enum": ["PHONE", "PC"] },
+        "cloudSyncEnabled": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "userId",
+        "displayName",
+        "email",
+        "providerId",
+        "lastDeviceModel",
+        "preferredFormFactor",
+        "cloudSyncEnabled",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "VmProfile": {
+      "title": "VmProfile",
+      "description": "Configured Android (4-17) or Windows (7-11) virtual machine profile.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "osFamily": { "type": "string", "enum": ["ANDROID", "WINDOWS"] },
+        "osVersionLabel": { "type": "string" },
+        "osMajorVersion": { "type": "integer" },
+        "formFactor": { "type": "string", "enum": ["PHONE", "PC"] },
+        "architecture": { "type": "string", "enum": ["ARM64", "X86_64"] },
+        "cpuCores": { "type": "integer" },
+        "ramMb": { "type": "integer" },
+        "storageGb": { "type": "integer" },
+        "gpuAcceleration": { "type": "string", "enum": ["VIRTIO_VULKAN", "VIRGL", "SWIFTSHADER"] },
+        "uefiEnabled": { "type": "boolean" },
+        "tpmEnabled": { "type": "boolean" },
+        "displayWidth": { "type": "integer" },
+        "displayHeight": { "type": "integer" },
+        "displayDpi": { "type": "integer" },
+        "imageId": { "type": "string" },
+        "imageTitle": { "type": "string" },
+        "vncHost": { "type": "string" },
+        "vncPort": { "type": "integer" },
+        "status": { "type": "string", "enum": ["STOPPED", "RUNNING", "PAUSED"] },
+        "lastSyncedDevice": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "userId",
+        "name",
+        "osFamily",
+        "osVersionLabel",
+        "osMajorVersion",
+        "formFactor",
+        "architecture",
+        "cpuCores",
+        "ramMb",
+        "storageGb",
+        "gpuAcceleration",
+        "uefiEnabled",
+        "tpmEnabled",
+        "displayWidth",
+        "displayHeight",
+        "displayDpi",
+        "imageId",
+        "imageTitle",
+        "vncHost",
+        "vncPort",
+        "status",
+        "lastSyncedDevice",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "OsImageEntry": {
+      "title": "OsImageEntry",
+      "description": "GSI, QCOW2, or ISO image metadata registered or downloaded by the user.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "osFamily": { "type": "string", "enum": ["ANDROID", "WINDOWS"] },
+        "osVersionLabel": { "type": "string" },
+        "osMajorVersion": { "type": "integer" },
+        "format": { "type": "string", "enum": ["GSI_IMG", "QCOW2", "ISO"] },
+        "architecture": { "type": "string", "enum": ["ARM64", "X86_64"] },
+        "sourceUrl": { "type": "string" },
+        "localPath": { "type": "string" },
+        "sizeBytes": { "type": "integer" },
+        "sha256": { "type": "string" },
+        "downloadStatus": {
+          "type": "string",
+          "enum": ["AVAILABLE", "DOWNLOADING", "VERIFIED", "LOCAL_IMPORT", "FAILED"]
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "userId",
+        "title",
+        "osFamily",
+        "osVersionLabel",
+        "osMajorVersion",
+        "format",
+        "architecture",
+        "sourceUrl",
+        "localPath",
+        "sizeBytes",
+        "sha256",
+        "downloadStatus",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "VmSnapshot": {
+      "title": "VmSnapshot",
+      "description": "Cloud-synchronized VM state checkpoint metadata.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "vmId": { "type": "string" },
+        "vmName": { "type": "string" },
+        "label": { "type": "string" },
+        "osVersionLabel": { "type": "string" },
+        "formFactor": { "type": "string", "enum": ["PHONE", "PC"] },
+        "ramMb": { "type": "integer" },
+        "deviceOrigin": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "userId",
+        "vmId",
+        "vmName",
+        "label",
+        "osVersionLabel",
+        "formFactor",
+        "ramMb",
+        "deviceOrigin",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserSyncProfile" },
+      "description": "Per-user cloud sync profile document."
+    },
+    "/users/{userId}/vms/{vmId}": {
+      "schema": { "$ref": "#/entities/VmProfile" },
+      "description": "User-owned virtual machine configurations synced across devices."
+    },
+    "/users/{userId}/images/{imageId}": {
+      "schema": { "$ref": "#/entities/OsImageEntry" },
+      "description": "User-owned GSI and OS image catalog records."
+    },
+    "/users/{userId}/snapshots/{snapshotId}": {
+      "schema": { "$ref": "#/entities/VmSnapshot" },
+      "description": "User-owned VM checkpoint metadata."
+    }
+  }
+}

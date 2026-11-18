@@ -1,0 +1,6 @@
+{
+  "name": "AdVm",
+  "description": "Virtual machine & GSI workstation for Android 4-17 and Windows 7-11 environments with hybrid AVF hardware diagnostics, RFB/VNC console, and multi-provider cloud sync.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
