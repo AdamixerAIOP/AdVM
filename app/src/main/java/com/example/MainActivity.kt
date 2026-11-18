@@ -95,12 +95,11 @@ import com.example.ui.theme.TextSecondary
 import com.example.ui.viewmodel.ConsoleViewModel
 import com.example.ui.viewmodel.DashboardViewModel
 import com.example.ui.viewmodel.ImagesViewModel
-import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
-import com.google.firebase.auth.auth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 
 const val ROUTE_DASHBOARD = "dashboard"
@@ -125,15 +124,18 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             AdVmTheme {
-                AppNavigation(auth = Firebase.auth)
+                val context = LocalContext.current
+                val safeAuth = remember(context) { AuthManager.safeFirebaseAuth(context) }
+                AppNavigation(auth = safeAuth)
             }
         }
     }
 }
 
 @Composable
-fun AppNavigation(auth: FirebaseAuth = Firebase.auth) {
-    val currentUser by auth.authStateFlow().collectAsStateWithLifecycle(initialValue = auth.currentUser)
+fun AppNavigation(auth: FirebaseAuth?) {
+    val authFlow = remember(auth) { auth?.authStateFlow() ?: flowOf(null) }
+    val currentUser by authFlow.collectAsStateWithLifecycle(initialValue = auth?.currentUser)
     var isGuestMode by rememberSaveable { mutableStateOf(false) }
     val user = currentUser
 

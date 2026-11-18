@@ -1,5 +1,6 @@
 package com.example.auth
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
 import android.util.Log
@@ -8,12 +9,12 @@ import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
-import com.example.R
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential.Companion.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
 import com.google.firebase.Firebase
+import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.auth.FirebaseUser
@@ -48,6 +49,25 @@ sealed interface OAuthOutcome {
 
 object AuthManager {
 
+    fun safeFirebaseAuth(context: Context): FirebaseAuth? {
+        return if (FirebaseApp.getApps(context.applicationContext).isNotEmpty()) {
+            Firebase.auth
+        } else {
+            null
+        }
+    }
+
+    @SuppressLint("DiscouragedApi")
+    private fun resolveDefaultWebClientId(context: Context): String? {
+        val resId = context.resources.getIdentifier(
+            "default_web_client_id",
+            "string",
+            context.packageName
+        )
+        if (resId == 0) return null
+        return runCatching { context.getString(resId) }.getOrNull()?.takeIf { it.isNotBlank() }
+    }
+
     fun attemptAutoSignIn(
         context: Context,
         credentialManager: CredentialManager,
@@ -55,13 +75,17 @@ object AuthManager {
         onAuthSuccess: () -> Unit,
         onUnauthenticated: () -> Unit
     ) {
-        if (Firebase.auth.currentUser != null) {
+        val auth = safeFirebaseAuth(context)
+        if (auth == null) {
+            onUnauthenticated()
+            return
+        }
+        if (auth.currentUser != null) {
             onAuthSuccess()
             return
         }
-        val clientId = try {
-            context.getString(R.string.default_web_client_id)
-        } catch (_: Exception) {
+        val clientId = resolveDefaultWebClientId(context)
+        if (clientId == null) {
             onUnauthenticated()
             return
         }
@@ -82,7 +106,7 @@ object AuthManager {
                 val cred = credentialManager.getCredential(context, request).credential
                 if (cred is CustomCredential && cred.type == TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
                     val token = GoogleIdTokenCredential.createFrom(cred.data).idToken
-                    Firebase.auth.signInWithCredential(GoogleAuthProvider.getCredential(token, null)).await()
+                    auth.signInWithCredential(GoogleAuthProvider.getCredential(token, null)).await()
                     onAuthSuccess()
                 } else {
                     onUnauthenticated()
@@ -97,11 +121,14 @@ object AuthManager {
         context: Context,
         credentialManager: CredentialManager
     ): OAuthOutcome {
-        val clientId = try {
-            context.getString(R.string.default_web_client_id)
-        } catch (_: Exception) {
-            return OAuthOutcome.Error("Google Sign-In configuration missing: default_web_client_id not found.")
-        }
+        val auth = safeFirebaseAuth(context)
+            ?: return OAuthOutcome.Error(
+                "Firebase configuration (google-services.json) is missing in this build. Use 'Continue as a guest' for offline mode or export the APK from AI Studio."
+            )
+        val clientId = resolveDefaultWebClientId(context)
+            ?: return OAuthOutcome.Error(
+                "Google Sign-In configuration (default_web_client_id) is missing in this build. Use 'Continue as a guest' or export the APK from AI Studio."
+            )
         val activity = context as? Activity
             ?: return OAuthOutcome.Error("An active Activity context is required for Google Sign-In.")
 
@@ -114,7 +141,7 @@ object AuthManager {
             val cred = credentialManager.getCredential(activity, request).credential
             if (cred is CustomCredential && cred.type == TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
                 val token = GoogleIdTokenCredential.createFrom(cred.data).idToken
-                Firebase.auth.signInWithCredential(GoogleAuthProvider.getCredential(token, null)).await()
+                auth.signInWithCredential(GoogleAuthProvider.getCredential(token, null)).await()
                 OAuthOutcome.Success
             } else {
                 OAuthOutcome.Error("Unexpected credential type received from Credential Manager.")
@@ -133,6 +160,10 @@ object AuthManager {
         providerId: String,
         providerDisplayName: String
     ): OAuthOutcome {
+        val auth = safeFirebaseAuth(context)
+            ?: return OAuthOutcome.Error(
+                "Firebase configuration (google-services.json) is missing in this build. Use 'Continue as a guest' for offline mode or export the APK from AI Studio."
+            )
         val activity = context as? Activity
             ?: return OAuthOutcome.Error("An active Activity is required for $providerDisplayName sign-in.")
         val provider = OAuthProvider.newBuilder(providerId).apply {
@@ -144,7 +175,6 @@ object AuthManager {
         }.build()
 
         return try {
-            val auth = Firebase.auth
             val pending = auth.pendingAuthResult
             if (pending != null) {
                 pending.await()
